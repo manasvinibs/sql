@@ -376,9 +376,8 @@ public class AstBuilder extends OpenSearchPPLParserBaseVisitor<UnresolvedPlan> {
   /** Replace command. */
   @Override
   public UnresolvedPlan visitReplaceCommand(OpenSearchPPLParser.ReplaceCommandContext ctx) {
-    UnresolvedExpression pattern = AstDSL.stringLiteral(removeQuotes(ctx.pattern.getText()));
-    UnresolvedExpression replacement =
-        AstDSL.stringLiteral(removeQuotes(ctx.replacement.getText()));
+    UnresolvedExpression pattern = internalVisitExpression(ctx.pattern);
+    UnresolvedExpression replacement = internalVisitExpression(ctx.replacement);
 
     List<Field> fieldList =
         ctx.fieldList().fieldExpression().stream()
@@ -386,11 +385,6 @@ public class AstBuilder extends OpenSearchPPLParserBaseVisitor<UnresolvedPlan> {
             .collect(Collectors.toList());
 
     return new Replace(pattern, replacement, fieldList);
-  }
-
-  private String removeQuotes(String text) {
-    // Remove both single and double quotes
-    return text.replaceAll("^[\"']|[\"']$", "");
   }
 
   /** Stats command. */

@@ -50,6 +50,7 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.rex.RexWindowBounds;
+import org.apache.calcite.sql.fun.SqlLibraryOperators;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -136,6 +137,7 @@ import org.opensearch.sql.expression.function.PPLFuncImpTable;
 import org.opensearch.sql.expression.parse.RegexCommonUtils;
 import org.opensearch.sql.utils.ParseUtils;
 import org.opensearch.sql.utils.WildcardRenameUtils;
+import org.opensearch.sql.utils.WildcardReplaceUtils;
 
 public class CalciteRelNodeVisitor extends AbstractNodeVisitor<RelNode, CalcitePlanContext> {
 
@@ -2141,33 +2143,55 @@ public class CalciteRelNodeVisitor extends AbstractNodeVisitor<RelNode, CalciteP
   @Override
   public RelNode visitReplace(Replace node, CalcitePlanContext context) {
     visitChildren(node, context);
+    String pattern = ((Literal) node.getPattern()).getValue().toString();
+    String replacement = ((Literal) node.getReplacement()).getValue().toString();
 
-    List<String> fieldNames = context.relBuilder.peek().getRowType().getFieldNames();
-    RexNode patternNode = rexVisitor.analyze(node.getPattern(), context);
-    RexNode replacementNode = rexVisitor.analyze(node.getReplacement(), context);
+    // Remove quotes if present
+    pattern = pattern.replaceAll("^[\"']|[\"']$", "");
+    replacement = replacement.replaceAll("^[\"']|[\"']$", "");
+
+    // Validate patterns only if wildcards are present
+    if (WildcardRenameUtils.isWildcardPattern(pattern)
+        || WildcardRenameUtils.isWildcardPattern(replacement)) {
+      WildcardReplaceUtils.validatePatterns(pattern, replacement);
+    }
 
     List<RexNode> projectList = new ArrayList<>();
     List<String> newFieldNames = new ArrayList<>();
-
-    // First add all original fields
-    for (String fieldName : fieldNames) {
-      RexNode fieldRef = context.relBuilder.field(fieldName);
-      projectList.add(fieldRef);
+    // Add original fields
+    for (String fieldName : context.relBuilder.peek().getRowType().getFieldNames()) {
+      projectList.add(context.relBuilder.field(fieldName));
       newFieldNames.add(fieldName);
     }
-
-    // Then add new fields with replaced content using new_ prefix
+    // Process fields for replacement
     for (Field field : node.getFieldList()) {
       String fieldName = field.getField().toString();
       RexNode fieldRef = context.relBuilder.field(fieldName);
-
-      RexNode replaceCall =
-          context.relBuilder.call(
-              SqlStdOperatorTable.REPLACE, fieldRef, patternNode, replacementNode);
-      projectList.add(replaceCall);
+      if (WildcardRenameUtils.isWildcardPattern(pattern)
+          || WildcardRenameUtils.isWildcardPattern(replacement)) {
+        String regexPattern = WildcardReplaceUtils.convertToRegexPattern(pattern);
+        String regexReplacement = WildcardReplaceUtils.convertToRegexReplacement(replacement);
+        // Use REGEXP_REPLACE for wildcard patterns
+        RexNode replaceCall =
+            context.relBuilder.call(
+                SqlLibraryOperators.REGEXP_REPLACE_3,
+                fieldRef,
+                context.relBuilder.literal(regexPattern),
+                context.relBuilder.literal(regexReplacement));
+        projectList.add(replaceCall);
+      } else {
+        System.out.println("Using REPLACE");
+        // Use standard REPLACE for non-wildcard patterns
+        RexNode replaceCall =
+            context.relBuilder.call(
+                SqlStdOperatorTable.REPLACE,
+                fieldRef,
+                context.relBuilder.literal(pattern),
+                context.relBuilder.literal(replacement));
+        projectList.add(replaceCall);
+      }
       newFieldNames.add(NEW_FIELD_PREFIX + fieldName);
     }
-
     context.relBuilder.project(projectList, newFieldNames);
     return context.relBuilder.peek();
   }
