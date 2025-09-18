@@ -56,7 +56,6 @@ public class Replace extends UnresolvedPlan {
       throw new IllegalArgumentException(
           "Field list cannot be empty in Replace command. Use IN clause to specify the field.");
     }
-
     Set<String> uniqueFields = new HashSet<>();
     List<String> duplicates =
         fieldList.stream()

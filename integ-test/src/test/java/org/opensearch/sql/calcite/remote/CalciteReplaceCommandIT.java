@@ -247,4 +247,80 @@ public class CalciteReplaceCommandIT extends PPLIntegTestCase {
     verifyErrorMessageContains(e, "is not a valid term at this part of the query");
     verifyErrorMessageContains(e, "Expecting tokens: DQUOTA_STRING, SQUOTA_STRING");
   }
+
+  @Test
+  public void testWildcardEndReplace() throws IOException {
+    JSONObject result =
+        executeQuery(
+            String.format(
+                "source = %s | replace 'CA*' WITH 'California*' IN state",
+                TEST_INDEX_STATE_COUNTRY));
+
+    verifySchema(
+        result,
+        schema("name", "string"),
+        schema("age", "int"),
+        schema("state", "string"),
+        schema("country", "string"),
+        schema("year", "int"),
+        schema("month", "int"),
+        schema("new_state", "string"));
+
+    verifyDataRows(
+        result,
+        rows("Jake", "USA", "California", 4, 2023, 70, "California"),
+        rows("Hello", "USA", "New York", 4, 2023, 30, "New York"),
+        rows("John", "Canada", "Ontario", 4, 2023, 25, "Ontario"),
+        rows("Jane", "Canada", "Quebec", 4, 2023, 20, "Quebec"));
+  }
+
+  @Test
+  public void testWildcardStartReplace() throws IOException {
+    JSONObject result =
+        executeQuery(
+            String.format(
+                "source = %s | replace '*York' WITH '*Jersey' IN state", TEST_INDEX_STATE_COUNTRY));
+
+    verifySchema(
+        result,
+        schema("name", "string"),
+        schema("age", "int"),
+        schema("state", "string"),
+        schema("country", "string"),
+        schema("year", "int"),
+        schema("month", "int"),
+        schema("new_state", "string"));
+
+    verifyDataRows(
+        result,
+        rows("Jake", "USA", "California", 4, 2023, 70, "California"),
+        rows("Hello", "USA", "New York", 4, 2023, 30, "New Jersey"),
+        rows("John", "Canada", "Ontario", 4, 2023, 25, "Ontario"),
+        rows("Jane", "Canada", "Quebec", 4, 2023, 20, "Quebec"));
+  }
+
+  @Test
+  public void testWildcardOrderOfValuesReplace() throws IOException {
+    JSONObject result =
+        executeQuery(
+            String.format(
+                "source = %s | replace '* York' WITH 'York *' IN state", TEST_INDEX_STATE_COUNTRY));
+
+    verifySchema(
+        result,
+        schema("name", "string"),
+        schema("age", "int"),
+        schema("state", "string"),
+        schema("country", "string"),
+        schema("year", "int"),
+        schema("month", "int"),
+        schema("new_state", "string"));
+
+    verifyDataRows(
+        result,
+        rows("Jake", "USA", "California", 4, 2023, 70, "California"),
+        rows("Hello", "USA", "New York", 4, 2023, 30, "York New"),
+        rows("John", "Canada", "Ontario", 4, 2023, 25, "Ontario"),
+        rows("Jane", "Canada", "Quebec", 4, 2023, 20, "Quebec"));
+  }
 }
